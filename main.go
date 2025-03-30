@@ -93,13 +93,13 @@ func VDB() {
 }
 
 // GetTransforms generates the vector transforms
-func GetTransforms() (transforms [256][256]float32) {
+func GetTransforms() (transforms [512][256]float32) {
 	rng := rand.New(rand.NewSource(1))
 	for i := range transforms {
 		for j := range transforms[i] {
 			transforms[i][j] = rng.Float32()
 		}
-		a := vector.Dot(transforms[i][:], transforms[i][:])
+		a := sqrt(vector.Dot(transforms[i][:], transforms[i][:]))
 		for j := range transforms[i] {
 			transforms[i][j] /= a
 		}
@@ -128,7 +128,7 @@ func main() {
 			m.Add(v)
 		}
 		for i := 0; i < 128; i++ {
-			var indexes [256]int64
+			var indexes [len(transforms)]int64
 			vv := m.Mix()
 			for i := range transforms {
 				indexes[i] = int64(math.Float32bits(2*float32(i) + vector.Dot(vv[:], transforms[i][:])))
