@@ -5,20 +5,30 @@
 package main
 
 import (
+	"compress/bzip2"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"math"
+	"math/rand"
 	"os"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+
+	"github.com/pointlander/v/vector"
 )
 
 const (
 	// InputSize is the size of the input
 	InputSize = 256
 )
+
+//go:embed books/*
+var Data embed.FS
 
 // V is the v application
 type V struct {
@@ -31,7 +41,7 @@ const (
 	msgFmt = "==== %s ====\n"
 )
 
-func main() {
+func VDB() {
 	config, err := os.Open("v.json")
 	if err != nil {
 		panic(err)
@@ -78,5 +88,50 @@ func main() {
 	err = c.CreateCollection(ctx, schema, entity.DefaultShardNumber) // only 1 shard
 	if err != nil {
 		panic(fmt.Errorf("failed to create collection: %v", err.Error()))
+	}
+}
+
+func main() {
+	rng := rand.New(rand.NewSource(1))
+	var test [4 * 1024 * 1024 * 1024]byte
+	file, err := Data.Open("books/100.txt.utf-8.bz2")
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	reader := bzip2.NewReader(file)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		panic(err)
+	}
+	m := NewFiltered()
+	m.Add(0)
+	var transforms [256][256]float32
+	for i := range transforms {
+		for j := range transforms[i] {
+			transforms[i][j] = rng.Float32()
+		}
+		a := vector.Dot(transforms[i][:], transforms[i][:])
+		for j := range transforms[i] {
+			transforms[i][j] /= a
+		}
+	}
+	for j, v := range data {
+		vv := m.Mix()
+		for i := range transforms {
+			x := math.Float32bits(2*float32(i) + vector.Dot(vv[:], transforms[i][:]))
+			test[x] = v
+		}
+		m.Add(v)
+		fmt.Println(float64(j) / float64(len(data)))
+	}
+	out, err := os.Create("model.bin")
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+	_, err = out.Write(test[:])
+	if err != nil {
+		panic(err)
 	}
 }
