@@ -9,6 +9,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -106,7 +107,78 @@ func GetTransforms() (transforms [256][256]float32) {
 	return transforms
 }
 
+var (
+	// FlagInfer is the inference mode
+	FlagInfer = flag.String("infer", "", "inference mode")
+)
+
 func main() {
+	flag.Parse()
+
+	if *FlagInfer != "" {
+		rng := rand.New(rand.NewSource(1))
+		db, err := os.Open(*FlagInfer)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		transforms := GetTransforms()
+		m, input := NewFiltered(), "What is love?"
+		for _, v := range []byte(input) {
+			m.Add(v)
+		}
+		for i := 0; i < 128; i++ {
+			var indexes [256]int64
+			vv := m.Mix()
+			for i := range transforms {
+				indexes[i] = int64(math.Float32bits(2*float32(i) + vector.Dot(vv[:], transforms[i][:])))
+			}
+			var histogram [256]uint
+			found := false
+			for i := 1; i < 1024 && !found; i *= 2 {
+				for j := range indexes {
+					begin, end := indexes[j]-int64(i), indexes[j]+int64(i)
+					if begin < 0 {
+						begin = 0
+					}
+					if end > math.MaxUint32 {
+						end = math.MaxUint32
+					}
+					_, err := db.Seek(begin, 0)
+					if err != nil {
+						panic(err)
+					}
+					buffer := make([]byte, end-begin+1)
+					_, err = db.Read(buffer)
+					if err != nil {
+						panic(err)
+					}
+					for _, v := range buffer {
+						if v != 0 {
+							found = true
+							histogram[v]++
+						}
+					}
+				}
+			}
+			sum := uint(0)
+			for _, v := range histogram {
+				sum += v
+			}
+			total, selected, index := 0.0, rng.Float64(), 0
+			for i, v := range histogram {
+				total += float64(v) / float64(sum)
+				if selected < total {
+					index = i
+					break
+				}
+			}
+			fmt.Printf("%c", byte(index))
+			m.Add(byte(index))
+		}
+		return
+	}
+
 	var test [4 * 1024 * 1024 * 1024]byte
 	file, err := Data.Open("books/100.txt.utf-8.bz2")
 	if err != nil {
