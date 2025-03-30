@@ -91,8 +91,22 @@ func VDB() {
 	}
 }
 
-func main() {
+// GetTransforms generates the vector transforms
+func GetTransforms() (transforms [256][256]float32) {
 	rng := rand.New(rand.NewSource(1))
+	for i := range transforms {
+		for j := range transforms[i] {
+			transforms[i][j] = rng.Float32()
+		}
+		a := vector.Dot(transforms[i][:], transforms[i][:])
+		for j := range transforms[i] {
+			transforms[i][j] /= a
+		}
+	}
+	return transforms
+}
+
+func main() {
 	var test [4 * 1024 * 1024 * 1024]byte
 	file, err := Data.Open("books/100.txt.utf-8.bz2")
 	if err != nil {
@@ -106,16 +120,7 @@ func main() {
 	}
 	m := NewFiltered()
 	m.Add(0)
-	var transforms [256][256]float32
-	for i := range transforms {
-		for j := range transforms[i] {
-			transforms[i][j] = rng.Float32()
-		}
-		a := vector.Dot(transforms[i][:], transforms[i][:])
-		for j := range transforms[i] {
-			transforms[i][j] /= a
-		}
-	}
+	transforms := GetTransforms()
 	for j, v := range data {
 		vv := m.Mix()
 		for i := range transforms {
